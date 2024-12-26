@@ -1,25 +1,27 @@
 export class ProductHuntAPI {
-    constructor(source, transformer, developerToken) {
-        this.source = source;
-        this.transformer = transformer;
+    constructor(config) {
+        this.url = config.producthunt_url;
         this.headers = {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${developerToken}`
+            'Authorization': `Bearer ${config.producthunt_token}`
         };
     }
 
-    async getTopProducts(limit = 20) {
+    async fetchData(limit = 20) {
         const query = {
             query: `query {
-                posts(first: ${limit}, featured: true) {
+                posts(first: ${limit}) {
                     edges {
                         node {
+                            id
                             name
                             tagline
                             description
                             url
+                            website
                             votesCount
+                            createdAt
                             topics {
                                 edges {
                                     node {
@@ -27,9 +29,12 @@ export class ProductHuntAPI {
                                     }
                                 }
                             }
-                            createdAt
                             thumbnail {
                                 url
+                            }
+                            media {
+                                url
+                                videoUrl
                             }
                         }
                     }
@@ -37,7 +42,7 @@ export class ProductHuntAPI {
             }`
         };
 
-        const response = await fetch(this.source.baseUrl, {
+        const response = await fetch(this.url, {
             method: 'POST',
             headers: this.headers,
             body: JSON.stringify(query)
@@ -48,21 +53,36 @@ export class ProductHuntAPI {
             throw new Error(data.errors?.[0]?.message || `API error: ${response.status}`);
         }
 
-        const products = data.data.posts.edges.map(({ node }) => ({
+        return data.data.posts.edges.map(({ node }) => ({
             name: node.name,
             tagline: node.tagline,
             description: node.description,
             url: node.url,
-            votes: node.votesCount,
+            website: node.website,
+            votes_count: node.votesCount,
+            created_at: node.createdAt,
             topics: node.topics.edges.map(e => e.node.name),
-            created: node.createdAt,
-            thumbnail: node.thumbnail?.url
+            thumbnail_url: node.thumbnail?.url,
+            media: node.media
         }));
+    }
+}
 
-        const articles = await Promise.all(
-            products.map(product => this.transformer.transform(product))
-        );
+// supabase.js
+export class SupabaseService {
+    constructor(client) {
+        this.client = client;
+    }
 
-        return articles;
+    async uploadProductHunt(products) {
+        const { data, error } = await this.client
+            .from('product_hunt')
+            .upsert(products, {
+                onConflict: 'url',
+                ignoreDuplicates: false
+            });
+
+        if (error) throw error;
+        return data;
     }
 }

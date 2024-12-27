@@ -3,7 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { getRawProductHunt, uploadProductHunt } from './controllers/productHuntController.js';
-import { getProcessedReddit, getRawReddit } from './controllers/redditController.js';
+import { getRawReddit, uploadRedditNews } from './controllers/redditController.js';
+import { newsBodySummarizer, newsTitleSummarizer } from './services/summarizer.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,7 +22,20 @@ app.get('/health', (_, res) => res.json({ status: 'healthy' }));
 app.get('/api/raw/product-hunt', getRawProductHunt);
 app.get('/api/news/product-hunt', uploadProductHunt);
 app.get('/api/raw/reddit', getRawReddit);
-app.get('/api/raw/reddit-processed', getProcessedReddit);
+app.get('/api/news/upload-reddit-news', uploadRedditNews);
+
+app.post('/test', async (req, res) => {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: 'Text is required' });
+
+    try {
+        const body = await newsBodySummarizer(text);
+        const title = await newsTitleSummarizer(text);
+        res.json({ title, body });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // Error handling
 app.use((err, req, res, next) => {

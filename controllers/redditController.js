@@ -1,6 +1,10 @@
 import {RedditAPI} from "../apis/reddit.js";
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { createClient } from "@supabase/supabase-js";
+import { SupabaseService } from "../services/supabase.js";
+import { readFile } from 'fs/promises';
+
 
 export async function getRawReddit(req, res) {
     try {
@@ -55,14 +59,15 @@ const ALLOWED_DOMAINS = {
   
 };
 
-export async function getProcessedReddit(req, res) {
+
+export async function getRedditNews() {
     try {
         const redditApi = new RedditAPI();
         const news = await redditApi.fetchCryptoNews();
         
         const processedData = await Promise.all(
             news
-            .filter(post => ALLOWED_DOMAINS[post.data.domain]) // Filter for allowed domains
+            .filter(post => ALLOWED_DOMAINS[post.data.domain])
             .map(async post => {
                 const { data } = post;
                 let content = '';
@@ -98,16 +103,48 @@ export async function getProcessedReddit(req, res) {
             })
         );
 
+        return processedData;
+    } catch (error) {
+        throw {
+            status: 500,
+            code: 'FETCH_ERROR',
+            message: error.message || 'Failed to fetch Reddit news',
+            details: error
+        };
+    }
+}
+
+
+export async function uploadRedditNews(req, res) {
+    try {
+        const config = JSON.parse(await readFile('config.json', 'utf8'));
+        if (!config.supabase_url || !config.supabase_key) {
+            return res.status(500).json({
+                status: 'error',
+                code: 'MISSING_CONFIG',
+                message: 'Missing required configuration'
+            });
+        }
+
+        const supabase = createClient(config.supabase_url, config.supabase_key);
+        const supabaseService = new SupabaseService(supabase);
+        const news = await getRedditNews();
+        const result = await supabaseService.uploadRedditNews(news);
+
         return res.json({
             status: 'success',
-            length: processedData.length,
-            data: processedData
-        });
+            message: 'Products uploaded successfully',
+            data: {
+                total_products: news.length,
+                uploaded_count: result?.length || 0
+            }
+        }); 
     } catch (error) {
         return res.status(error.status || 500).json({
             status: 'error',
-            code: error.code || 'FETCH_ERROR',
-            message: error.message || 'Failed to fetch Reddit news'
+            code: error.code || 'UPLOAD_ERROR',
+            message: error.message,
+            details: process.env.NODE_ENV === 'development' ? error.details : undefined
         });
     }
 }

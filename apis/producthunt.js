@@ -67,22 +67,3 @@ export class ProductHuntAPI {
         }));
     }
 }
-
-// supabase.js
-export class SupabaseService {
-    constructor(client) {
-        this.client = client;
-    }
-
-    async uploadProductHunt(products) {
-        const { data, error } = await this.client
-            .from('product_hunt')
-            .upsert(products, {
-                onConflict: 'url',
-                ignoreDuplicates: false
-            });
-
-        if (error) throw error;
-        return data;
-    }
-}

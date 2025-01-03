@@ -6,9 +6,7 @@ export class SupabaseService {
     this.supabase = createClient(config.supabase_url, config.supabase_key);
     this.reddit = new RedditService(this.supabase);
     this.news = new NewsService(this.supabase);
-    
-
-
+  
   }
 }
 

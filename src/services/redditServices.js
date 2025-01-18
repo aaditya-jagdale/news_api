@@ -2,22 +2,39 @@ import { REDDIT_API } from '../config/constants.js';
 import { HttpService } from './base/HttpService.js';
 import * as cheerio from 'cheerio';
 import { SupabaseService } from './supabase.js';
-import ContentSummarizer from './utils/contentSummarizer.js';
 
 const ALLOWED_DOMAINS = {
     'cryptobriefing.com': {
-        selectors: ['.content-area', '.article-content', 'article p']
+        selectors: ['.content-area', '.article-content', 'article p'],
+        imageSelectors: ['article-image']
     },
     'crypto.news': {
-        selectors: ['.article-content', '.post-content', 'article']
+        selectors: ['.article-content', '.post-content', 'article'],
+        imageSelectors: ['.post-detail__media', '.post-detail__header']
     },
     'm.economictimes.com': {
-        selectors: ['.artText', '.article-body']
+        selectors: ['.artText', '.article-body'],
+        imageSelectors: ['.artImg']
+    },
+    'cryptopolitan.com': {
+        selectors: ['.theme-post-content.default', ".elementor-widget-theme-post-content"],
+        imageSelectors: ['.elementor-widget-container']
+    },
+    'forbes.com': {
+        selectors: ['.article-headline-container', '.article-body'],
+        imageSelectors: ['.image-embed__placeholder', '.article-body']
+    },
+    'dlnews.com': {
+        selectors: ['.article-body-wrapper', '.puppeteer-article-text-type-element'],
+        imageSelectors: ['.article-hero']
+    },
+    'news.bitcoin.com': {
+        selectors: ['.article__body'],
+        imageSelectors: ['.article__body']
     }
 };
 
 export class RedditService extends HttpService {
-  #summarizer = new ContentSummarizer();
   #supabase = new SupabaseService();
 
   #cleanContent(content) {
@@ -44,6 +61,7 @@ export class RedditService extends HttpService {
     return `${baseUrl}/hot.json?${queryParams}`;
   }    
 
+  //get content from website
   async #fetchContent(url, domain) {
     try {
       const response = await fetch(url);
@@ -66,6 +84,29 @@ export class RedditService extends HttpService {
       return '';
     }
   }
+
+  //get image from website
+  async #fetchImage(url, domain) {
+    try {
+      const response = await fetch(url);
+      const html = await response.text();
+      const $ = cheerio.load(html);
+      
+      const imageSelectors = ALLOWED_DOMAINS[domain]?.imageSelectors;
+      if (!imageSelectors) return '';
+
+      for (const selector of imageSelectors) {
+        const imageElement = $(`${selector} img`);
+        if (imageElement.length) {
+          return imageElement.attr('src');
+        }
+      }
+      return '';
+    } catch (error) {
+      console.error(`Error fetching image from ${url}:`, error);
+      return '';
+    }
+  }
   
   async getRedditNews() {
     const url = this.#buildUrl();
@@ -84,11 +125,8 @@ export class RedditService extends HttpService {
       thumbnail: post.data.thumbnail,
       domain: post.data.domain,
       url_overridden_by_dest: post.data.url_overridden_by_dest,
-      image: post.data.preview?.images[0]?.source?.url,
-      content: await this.#fetchContent(
-        post.data.url_overridden_by_dest,
-        post.data.domain
-      )
+      image: await this.#fetchImage(post.data.url_overridden_by_dest,  post.data.domain),
+      content: await this.#fetchContent( post.data.url_overridden_by_dest, post.data.domain )
     })));
 
     const uploadedDataLength = await this.#supabase.reddit.upload(redditNews);
@@ -97,7 +135,7 @@ export class RedditService extends HttpService {
       status: 'success',
       fetchedNews: redditNews.length,
       totalUploaded: uploadedDataLength,
-      news: redditNews
+      news: uploadedDataLength,
     };
   }
 
